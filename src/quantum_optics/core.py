@@ -39,6 +39,26 @@ def coherent_psi(dim, alpha):
     return normalize([alpha**j/np.sqrt(scipy.special.factorial(j))
         for j in range(dim)])
 
+def cat_psi(dim, alpha, phi, N_comps=2):
+    """N-component cat state.
+
+    Args:
+        dim (int): Dimension of the Hilbert space.
+        alpha (complex): Displacement of the cat state components.
+        phi (float): Phase difference between subsequent component kets.
+        N_comps (int, optional): Number of cat components (defaults to 2).
+
+    Returns:
+        array: Pure state vector of the cat in the Fock basis. Defined as
+            `A sum_{k=0}^{N_comps-1} exp(i k phi)
+                |alpha exp(2 pi i k / N_comps)>`,
+            where `A` is a normalization coefficient.
+    """
+    return normalize(
+        sum([np.exp(1j*k*phi) *
+                coherent_psi(dim, alpha*np.exp(2j*np.pi*k/N_comps))
+            for k in range(N_comps)]))
+
 def thermal_rho(dim, n):
     """Thermal state as a density matrix in the Fock basis.
 

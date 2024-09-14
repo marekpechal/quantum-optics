@@ -2,10 +2,13 @@ import scipy.integrate
 import numpy as np
 from quantum_optics.core import (
     fock_wavefunction,
+    normalize,
+    overlap,
     destroy,
     expectation,
     psi_to_rho,
     coherent_psi,
+    cat_psi,
     thermal_rho,
     apply_loss,
     )
@@ -62,6 +65,32 @@ def test_coherent_psi():
     assert abs(expectation(destroy(dim), psi_to_rho(psi))-alpha)<1e-4, \
         "expectation value check failed"
 
+def test_cat_psi():
+    dim = 10
+    alpha = 1.0
+    cat_even = cat_psi(dim, alpha, 0)
+    cat_odd = cat_psi(dim, alpha, np.pi)
+    eta = 0.5
+    assert abs(1-np.linalg.norm(cat_odd))<1e-6, "norm test failed"
+    assert abs(1-np.linalg.norm(cat_even))<1e-6, "norm test failed"
+    assert abs(overlap(cat_even, cat_odd))<1e-6, "orthogonality test failed"
+    assert abs(1-np.trace(psi_to_rho(cat_odd)))<1e-6, "trace test failed"
+    assert abs(1-np.trace(psi_to_rho(cat_even)))<1e-6, "trace test failed"
+    assert abs(1-np.trace(apply_loss(cat_odd, eta)))<1e-6, "trace test failed"
+    assert abs(1-np.trace(apply_loss(cat_even, eta)))<1e-6, "trace test failed"
+
+    dim = 20
+    alpha = 2.0
+    cat = cat_psi(dim, alpha, 0, N_comps=3)
+    assert sum(abs(cat[1::3])**2)+sum(abs(cat[2::3])**2)<1e-6, \
+        "3-component cat population mod 3 test failed"
+
+    a = destroy(dim)
+    cat1 = cat_psi(dim, alpha, 0, N_comps=3)
+    cat2 = cat_psi(dim, alpha, 2*np.pi/3, N_comps=3)
+    assert np.linalg.norm(cat2 - normalize(a @ cat1))<1e-6, \
+        "3-component cat a-action test failed"
+
 def test_thermal_rho():
     dim = 40
     n = 2.0
@@ -90,5 +119,6 @@ def test_apply_loss():
 if __name__ == "__main__":
     test_fock_wavefunction()
     test_coherent_psi()
+    test_cat_psi()
     test_thermal_rho()
     test_apply_loss()
