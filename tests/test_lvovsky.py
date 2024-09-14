@@ -72,7 +72,7 @@ def test_measurement_operator():
         err_msg="measurement pdf check failed")
 
 def _generate_random_numbers(pdf, N, xMax=8.0, seed=None):
-    rng = np.random.default_rng(seed=None)
+    rng = np.random.default_rng(seed=seed)
     xRng = np.linspace(-xMax, xMax, 2001)
     pRng = np.array([pdf(x) for x in xRng])
     pRng = pRng/sum(pRng)
@@ -94,6 +94,8 @@ def test_reconstruction():
     n_iters = 50
     for _ in range(n_iters):
         rho = iteration_step(rho, theta_arr, x_arr)
+    print(np.trace(rho))
+    print(np.diag(rho))
     assert (
         abs(np.trace(rho)-1)<1e-6 and
         abs(rho[1, 1]-1)<0.05), \
