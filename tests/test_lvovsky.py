@@ -94,8 +94,6 @@ def test_reconstruction():
     n_iters = 50
     for _ in range(n_iters):
         rho = iteration_step(rho, theta_arr, x_arr)
-    print(np.trace(rho))
-    print(np.diag(rho))
     assert (
         abs(np.trace(rho)-1)<1e-6 and
         abs(rho[1, 1]-1)<0.05), \
