@@ -1,4 +1,6 @@
 """quantum-optics."""
 from . import (
-    lvovsky
+    core,
+    lvovsky,
+    measurements
 )
