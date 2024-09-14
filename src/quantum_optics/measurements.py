@@ -1,7 +1,13 @@
 import numpy as np
 import functools
 import scipy.special
-from quantum_optics.core import fock_wavefunction
+from quantum_optics.core import (
+    overlap,
+    expectation,
+    fock_wavefunction,
+    displaced_fock_psi,
+    coherent_psi,
+    )
 
 @functools.lru_cache(maxsize=None)
 def loss_map(dim, eta):
@@ -55,3 +61,53 @@ def quadrature_measurement_operator(dim, theta, x, eta=None):
 
     res = L.dot(res.flatten()).reshape((dim, dim)) # apply the
     return res                                     # lossless -> lossy map
+
+def husimi_Q(state, alpha, dim=None):
+    """Husimi Q probability function
+
+    Args:
+        state (array): Pure state vector or density matrix.
+        alpha (complex): Displacement at which to evaluate Q.
+        dim (int or None, optional): Dimension of the Hilbert space.
+            If None, it is determined from the shape of `state`. Otherwise,
+            `state` is extended to the given dimension.
+
+    Returns:
+        complex: Value of Q(alpha).
+    """
+    state = state.copy()
+    if dim is None:
+        dim = state.shape[0]
+    if len(state.shape) == 1:
+        state.resize(dim)
+        return abs(overlap(coherent_psi(dim, alpha), state))**2
+    else:
+        state.resize((dim, dim))
+        return expectation(state, coherent_psi(dim, alpha)).real
+
+def wigner_W(state, alpha, dim=None):
+    """Wigner W quasi-probability function
+
+    Args:
+        state (array): Pure state vector or density matrix.
+        alpha (complex): Displacement at which to evaluate W.
+        dim (int or None, optional): Dimension of the Hilbert space.
+            If None, it is determined from the shape of `state`. Otherwise,
+            `state` is extended to the given dimension.
+
+    Returns:
+        complex: Value of W(alpha).
+    """
+    state = state.copy()
+    if dim is None:
+        dim = state.shape[0]
+    if len(state.shape) == 1:
+        state.resize(dim)
+        return sum([
+            (-1)**n * abs(overlap(displaced_fock_psi(dim, n, alpha), state))**2
+            for n in range(dim)])
+    else:
+        state.resize((dim, dim))
+        return sum([
+            (-1)**n * expectation(state, displaced_fock_psi(dim, n, alpha))
+            for n in range(dim)])

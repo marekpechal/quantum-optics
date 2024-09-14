@@ -8,6 +8,7 @@ from quantum_optics.core import (
     expectation,
     psi_to_rho,
     coherent_psi,
+    displaced_fock_psi,
     cat_psi,
     thermal_rho,
     apply_loss,
@@ -79,6 +80,15 @@ def test_cat_psi():
     assert abs(1-np.trace(apply_loss(cat_odd, eta)))<1e-6, "trace test failed"
     assert abs(1-np.trace(apply_loss(cat_even, eta)))<1e-6, "trace test failed"
 
+    for psi, sign in [(cat_even, 1), (cat_odd, -1)]: # check eigenvalues of cat
+        rho = apply_loss(psi, eta)                   # DM after loss against
+        evals = sorted(np.linalg.eig(rho)[0])[-2:]   # analytical calculation
+        N = 0.5 / (1+sign*np.exp(-2*abs(alpha)**2))
+        term = N*(np.exp(-2*(1-eta)*abs(alpha)**2)
+            +sign*np.exp(-2*eta*abs(alpha)**2))
+        assert abs(0.5-term-evals[0])<1e-6 and abs(0.5+term-evals[1])<1e-6, \
+            "eigenvalue test failed"
+
     dim = 20
     alpha = 2.0
     cat = cat_psi(dim, alpha, 0, N_comps=3)
@@ -98,6 +108,18 @@ def test_thermal_rho():
     rho = thermal_rho(dim, n)
     assert abs(expectation(a.conj().T @ a, rho)-n)<1e-4, \
         "expectation value check failed"
+
+def test_displaced_fock_psi():
+    dim = 30
+    alpha = 2.0
+    n = 2
+    psi = displaced_fock_psi(dim, n, alpha)
+    a = destroy(dim)
+
+    assert abs(expectation(a, psi)-alpha)<1e-6, \
+        "displaced fock state test failed"
+    assert abs(expectation(a.conj().T @ a, psi)-(n+abs(alpha)**2))<1e-6, \
+        "displaced fock state test failed"
 
 def test_apply_loss():
     dim = 20
@@ -121,4 +143,5 @@ if __name__ == "__main__":
     test_coherent_psi()
     test_cat_psi()
     test_thermal_rho()
+    test_displaced_fock_psi()
     test_apply_loss()

@@ -26,6 +26,40 @@ def destroy(dim):
     """
     return np.diag(np.sqrt(range(1, dim)), 1)
 
+def fock_psi(dim, n):
+    """Fock state in Fock basis.
+
+    Args:
+        dim (int): Dimension of the Hilbert space.
+        n (int): Number of the Fock state.
+
+    Returs:
+        array: Fock state vector.
+    """
+    psi = np.zeros(dim).astype(complex)
+    psi[n] = 1.0
+    return psi
+
+def displaced_fock_psi(dim, n, alpha):
+    """Displaced Fock state in Fock basis.
+
+    Args:
+        dim (int): Dimension of the Hilbert space.
+        n (int): Number of the Fock state.
+        alpha (complex): Displacement of the state.
+
+    Returs:
+        array: Displaced Fock state vector.
+    """
+    u = np.array([np.sqrt(scipy.special.factorial(m)) * sum([
+            alpha**(m-j) * (-alpha.conjugate())**(n-j) / (
+                scipy.special.factorial(m-j) *
+                scipy.special.factorial(n-j) *
+                scipy.special.factorial(j))
+            for j in range(min(m, n)+1)])
+        for m in range(dim)])
+    return u*np.exp(-abs(alpha)**2/2)*np.sqrt(scipy.special.factorial(n))
+
 def coherent_psi(dim, alpha):
     """Coherent state as a state vector in the Fock basis.
 
