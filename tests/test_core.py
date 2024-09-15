@@ -55,6 +55,13 @@ def test_fock_wavefunction():
             -10.0, 10.0)[0])<1e-6), \
         "orthogonality check failed"
 
+    for n in range(10):
+        assert (
+            abs(scipy.integrate.quad(
+                lambda x: abs(fock_wavefunction(n, 0, x))**2*x**2,
+                -10.0, 10.0)[0]-(n/2+1/4))<1e-6), \
+            "expectation of x^2 check failed"
+
 def test_coherent_psi():
     dim = 20
     alpha = 2.0+1.0j

@@ -111,3 +111,31 @@ def wigner_W(state, alpha, dim=None):
         return sum([
             (-1)**n * expectation(state, displaced_fock_psi(dim, n, alpha))
             for n in range(dim)])
+
+def draw_from_pdf(pdf, N, x_range, n_subdiv, seed=None):
+    """Draw random numbers from a given probability distribution.
+
+    The pdf is restricted to a finite range which is the subdivided into
+    equally sized subintervals. The pdf is replaced by a piecewise constant
+    function on the subintervals (with value taken from the mid-point)
+    and rescaled to properly normalize it. The returned values are drawn
+    from this modified distribution.
+
+    Args:
+        pdf (callable): Probability density function as a callable taking a
+            single float argument and returning a single float. Does not need
+            to be normalized.
+        N (int): Number of i.i.d. values to draw.
+        x_range (tuple): Finite range (x1, x2) from which to draw.
+        n_subdiv (int): Number of intervals into which to subdivide the range.
+        seed (int or None, optional): Seed for the rng. Defaults to None.
+    """
+    rng = np.random.default_rng(seed=seed)
+    dx = (x_range[1]-x_range[0])/n_subdiv
+    x_ctr_arr = dx*(np.arange(n_subdiv)+0.5)+x_range[0]
+    x_arr = dx*np.arange(n_subdiv+1)+x_range[0]
+    p_ctr_arr = np.array([pdf(x) for x in x_ctr_arr])
+    p_ctr_arr = p_ctr_arr / sum(p_ctr_arr)
+    F = scipy.interpolate.interp1d(
+        np.concatenate(([0], np.cumsum(p_ctr_arr))), x_arr)
+    return np.array([F(rng.uniform()) for _ in range(N)])
