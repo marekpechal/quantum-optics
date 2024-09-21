@@ -13,6 +13,7 @@ from quantum_optics.core import (
 from quantum_optics.measurements import (
     quadrature_measurement_operator,
     husimi_Q,
+    wigner_W_naive,
     wigner_W,
     draw_from_pdf,
     )
@@ -75,6 +76,23 @@ def test_husimi_Q():
         decimal=5,
         err_msg="Husimi Q test failed")
 
+def test_wigner_W_naive():
+    dim = 30
+    alpha = 0.7+0.7j
+    psi = cat_psi(dim, alpha, 0.0)
+    xrng = np.linspace(0.0, 1.5, 6)
+
+    # test with cat state against analytical calculation
+    wvals = np.array([[wigner_W_naive(psi, x+1j*y)
+        for x in xrng] for y in xrng])
+    wvals_th = np.array([[
+        np.exp(-2*((x-alpha.real)**2+(y-alpha.imag)**2)) +
+        np.exp(-2*((x+alpha.real)**2+(y+alpha.imag)**2)) +
+        2*np.exp(-2*(x**2+y**2))*np.cos(4*(alpha*(x-1j*y)).imag)
+        for x in xrng] for y in xrng])/(2*(1+np.exp(-2*abs(alpha)**2)))
+    np.testing.assert_array_almost_equal(wvals, wvals_th,
+        err_msg="Wigner W test failed")
+
 def test_wigner_W():
     dim = 30
     alpha = 0.7+0.7j
@@ -82,7 +100,8 @@ def test_wigner_W():
     xrng = np.linspace(0.0, 1.5, 6)
 
     # test with cat state against analytical calculation
-    wvals = np.array([[wigner_W(psi, x+1j*y) for x in xrng] for y in xrng])
+    wvals = np.array([[wigner_W(psi, x+1j*y)
+        for x in xrng] for y in xrng])
     wvals_th = np.array([[
         np.exp(-2*((x-alpha.real)**2+(y-alpha.imag)**2)) +
         np.exp(-2*((x+alpha.real)**2+(y+alpha.imag)**2)) +
@@ -138,5 +157,6 @@ def test_draw_from_pdf(plot=False):
 if __name__ == "__main__":
     test_quadrature_measurement_operator()
     test_husimi_Q()
+    test_wigner_W_naive()
     test_wigner_W()
     test_draw_from_pdf(plot=True)

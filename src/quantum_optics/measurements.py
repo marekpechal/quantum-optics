@@ -85,8 +85,9 @@ def husimi_Q(state, alpha, dim=None):
         state.resize((dim, dim))
         return expectation(state, coherent_psi(dim, alpha)).real
 
-def wigner_W(state, alpha, dim=None):
-    """Wigner W quasi-probability function
+def wigner_W_naive(state, alpha, dim=None):
+    """Wigner W quasi-probability function.
+    Calculated naively by displaced parity operator.
 
     Args:
         state (array): Pure state vector or density matrix.
@@ -110,7 +111,35 @@ def wigner_W(state, alpha, dim=None):
         state.resize((dim, dim))
         return sum([
             (-1)**n * expectation(state, displaced_fock_psi(dim, n, alpha))
-            for n in range(dim)])
+            for n in range(dim)]).real
+
+def wigner_W(state, alpha):
+    """Wigner W quasi-probability function.
+    Calculated using the formula for the Wigner function of |n><m|
+    https://physics.stackexchange.com/a/362666/182172
+
+    Args:
+        state (array): Pure state vector or density matrix.
+        alpha (complex): Displacement at which to evaluate W.
+
+    Returns:
+        complex: Value of W(alpha).
+    """
+    state = state.copy()
+    if len(state.shape) == 1:
+        state = np.outer(state, state.conjugate())
+    dim = state.shape[0]
+    result = 0
+    u = 4*abs(alpha)**2
+    for i in range(dim):
+        result += ((-1)**i * scipy.special.assoc_laguerre(u, i, 0)
+            * state[i, i].real)
+        for j in range(i):
+            A = np.sqrt(scipy.special.factorial(j)/scipy.special.factorial(i))
+            A *= (-1)**j * (2*alpha.conjugate())**(i-j)
+            A *= scipy.special.assoc_laguerre(u, j, i-j)
+            result += 2*(A * state[i, j]).real
+    return result * np.exp(-0.5*u)
 
 def draw_from_pdf(pdf, N, x_range, n_subdiv, seed=None):
     """Draw random numbers from a given probability distribution.
