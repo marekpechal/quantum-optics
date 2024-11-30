@@ -124,7 +124,8 @@ def get_emission_couplings(mode_shapes, t_range, Npts=1001):
     res = []
     for i in range(len(mode_shapes_samp)):
         mode = mode_shapes_samp[len(mode_shapes_samp)-i-1]
-        res.append(mode/np.sqrt(np.cumsum(abs(mode[::-1])**2)[::-1]*dt))
+        res.append(mode.conjugate()/
+            np.sqrt(np.cumsum(abs(mode[::-1])**2)[::-1]*dt))
 
         # compensate for distortion of other modes
         fac = np.exp(np.cumsum(-abs(res[-1])**2/2)*dt)
@@ -163,7 +164,8 @@ def get_absorption_couplings(mode_shapes, t_range, Npts=1001):
     res = []
     for i in range(len(mode_shapes_samp)):
         mode = mode_shapes_samp[i]
-        res.append(mode.conjugate()/np.sqrt(np.cumsum(abs(mode)**2)*dt))
+        res.append(-mode.conjugate()/np.sqrt(np.cumsum(abs(mode)**2)*dt))
+        #res.append(mode/np.sqrt(np.cumsum(abs(mode)**2)*dt))
 
         # compensate for distortion of other modes
         fac = np.exp(np.cumsum(abs(res[-1])**2/2)*dt)
