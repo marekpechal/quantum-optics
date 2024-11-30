@@ -2,5 +2,6 @@
 from . import (
     core,
     lvovsky,
+    kiilerich,
     measurements
 )
