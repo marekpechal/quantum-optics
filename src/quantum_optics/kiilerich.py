@@ -124,11 +124,11 @@ def get_emission_couplings(mode_shapes, t_range, Npts=1001):
     res = []
     for i in range(len(mode_shapes_samp)):
         mode = mode_shapes_samp[len(mode_shapes_samp)-i-1]
-        res.append(mode/np.sqrt(1-np.cumsum(abs(mode)**2)*dt))
+        res.append(mode/np.sqrt(np.cumsum(abs(mode[::-1])**2)[::-1]*dt))
 
+        # compensate for distortion of other modes
         fac = np.exp(np.cumsum(-abs(res[-1])**2/2)*dt)
         for j in range(i+1, len(mode_shapes_samp)):
-            plt.plot(mode_shapes_samp[len(mode_shapes_samp)-j-1], "r-")
             mode2 = mode_shapes_samp[len(mode_shapes_samp)-j-1]
 
             A = np.cumsum(-res[-1]*mode2*fac)*dt
@@ -138,10 +138,46 @@ def get_emission_couplings(mode_shapes, t_range, Npts=1001):
                 mode2-
                 res[-1].conjugate()*A
                 )
-            plt.plot(mode_shapes_samp[len(mode_shapes_samp)-j-1], "b-")
-            plt.show()
 
     return [scipy.interpolate.interp1d(t_arr, pts,
             bounds_error=False,
             fill_value=0.0)
         for pts in res[::-1]]
+
+def get_absorption_couplings(mode_shapes, t_range, Npts=1001):
+    """Calculate coupling to absorb multiple modes in cascaded systems.
+
+    Args:
+      mode_shapes (list): Mode shapes as functions of time.
+      t_range (tuple): Initial and final time (t1, t2)
+      Npts (int, optional): Number of discretization points.
+
+    Returns:
+      list: List of functions of time, evaluating the couplings.
+    """
+
+    t_arr = np.linspace(*t_range, Npts)
+    dt = t_arr[1]-t_arr[0]
+    mode_shapes_samp = np.array([[f(t) for t in t_arr] for f in mode_shapes])
+
+    res = []
+    for i in range(len(mode_shapes_samp)):
+        mode = mode_shapes_samp[i]
+        res.append(mode.conjugate()/np.sqrt(np.cumsum(abs(mode)**2)*dt))
+
+        # compensate for distortion of other modes
+        fac = np.exp(np.cumsum(abs(res[-1])**2/2)*dt)
+        for j in range(i+1, len(mode_shapes_samp)):
+            mode2 = mode_shapes_samp[j]
+
+            A = np.cumsum(-res[-1]*mode2*fac)*dt
+            A = A/fac
+            mode_shapes_samp[j] = (
+                mode2+
+                res[-1].conjugate()*A
+                )
+
+    return [scipy.interpolate.interp1d(t_arr, pts,
+            bounds_error=False,
+            fill_value=0.0)
+        for pts in res]

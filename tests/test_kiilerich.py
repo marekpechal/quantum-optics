@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from quantum_optics.kiilerich import (
     solve_cascaded_system,
     get_emission_couplings,
+    get_absorption_couplings,
     )
 
 def test_cascaded_system1(plot=False):
@@ -206,9 +207,11 @@ def test_emission_couplings2(plot=False):
         automatically with the tested function here.
     System 3 = initially empty resonator with time-dependent coupling
         designed to catch one of the emitted modes.
-        Coupling is calculated manually.
+        Coupling is calculated automatically.
 
-    Passes if the total number of photons in the systems remains constant.
+    Passes if the total number of photons in the output resonator at the
+    end of the simulation equals the number of photons in the input resonator
+    with the matching mode at the beginning.
     """
 
     dims = [5, 5, 5]
@@ -227,45 +230,199 @@ def test_emission_couplings2(plot=False):
         lambda t: np.sqrt(3*kappa**3)*t / (2*np.pi*np.cosh(kappa*t/2)),
         lambda t: np.sqrt(kappa) / (2*np.cosh(kappa*t/2))
         ]
-    gs_e = get_emission_couplings(mode_shapes, (tlist[0], tlist[-1]), Npts=40001)
+    gs_e = get_emission_couplings(mode_shapes,
+        (tlist[0], tlist[-1]),
+        Npts=40001)
 
-    gs = gs_e + [
-        lambda t: -0.5*np.sqrt(kappa) / np.cosh(kappa*t/2) / np.sqrt((1+np.tanh(kappa*t/2))/2)
-        ]
+    for m_idx in range(2): # simulate for each input mode matched to the output
+        gs_a = get_absorption_couplings([mode_shapes[m_idx]],
+            (tlist[0], tlist[-1]),
+            Npts=40001)
+
+        gs = gs_e + gs_a
+
+        sol = solve_cascaded_system(dims, Hs, gs, rho0, tlist)
+
+        N1 = qt.tensor(
+            qt.destroy(dims[0]).dag()*qt.destroy(dims[0]),
+            qt.qeye(dims[1]),
+            qt.qeye(dims[2]))
+        N2 = qt.tensor(
+            qt.qeye(dims[0]),
+            qt.destroy(dims[1]).dag()*qt.destroy(dims[1]),
+            qt.qeye(dims[2]))
+        N3 = qt.tensor(
+            qt.qeye(dims[0]),
+            qt.qeye(dims[1]),
+            qt.destroy(dims[2]).dag()*qt.destroy(dims[2]))
+        pops1 = np.array([qt.expect(N1, rho) for rho in sol.states])
+        pops2 = np.array([qt.expect(N2, rho) for rho in sol.states])
+        pops3 = np.array([qt.expect(N3, rho) for rho in sol.states])
+
+        pops_m = [pops1, pops2][m_idx]
+        assert abs(pops3[-1]-pops_m[0])<1e-3, \
+            "coupling calculation test failed"
+
+        if plot:
+            plt.plot(tlist, pops1)
+            plt.plot(tlist, pops2)
+            plt.plot(tlist, pops3)
+            plt.grid()
+            plt.show()
+
+
+def test_emission_absorption_couplings1(plot=False):
+    """Test of emission & absorption couplings calculation with 1+1 mode.
+
+    System 1 = initially populated resonator with time-dependent coupling
+        designed to release a 1/cosh(kappa*t/2) mode. Coupling is calculated
+        automatically with the tested function here.
+    System 2 = initially empty resonator with time-dependent coupling
+        designed to catch the emitted mode.
+        Coupling is calculated automatically with the tested function here.
+
+    Passes if the total number of photons in the systems remains constant.
+    """
+
+    dims = [5, 5]
+    Nph = 4
+    rho0 = qt.tensor(
+        qt.fock(dims[0], Nph)*qt.fock(dims[0], Nph).dag(),
+        qt.fock(dims[1], 0)*qt.fock(dims[1], 0).dag()
+        )
+    tlist = np.linspace(-10.0, 10.0, 1001)
+    Hs = [(lambda t, dim=dim: qt.qzero(dim)) for dim in dims]
+
+    kappa = 1.0
+    mode_shapes = [lambda t: np.sqrt(kappa) / (2*np.cosh(kappa*t/2))]
+    gs = (
+        get_emission_couplings(mode_shapes, (tlist[0], tlist[-1])) +
+        get_absorption_couplings(mode_shapes, (tlist[0], tlist[-1]))
+        )
 
     sol = solve_cascaded_system(dims, Hs, gs, rho0, tlist)
 
     N1 = qt.tensor(
         qt.destroy(dims[0]).dag()*qt.destroy(dims[0]),
-        qt.qeye(dims[1]),
-        qt.qeye(dims[2]))
+        qt.qeye(dims[1]))
     N2 = qt.tensor(
         qt.qeye(dims[0]),
-        qt.destroy(dims[1]).dag()*qt.destroy(dims[1]),
-        qt.qeye(dims[2]))
-    N3 = qt.tensor(
-        qt.qeye(dims[0]),
-        qt.qeye(dims[1]),
-        qt.destroy(dims[2]).dag()*qt.destroy(dims[2]))
+        qt.destroy(dims[1]).dag()*qt.destroy(dims[1]))
     pops1 = np.array([qt.expect(N1, rho) for rho in sol.states])
     pops2 = np.array([qt.expect(N2, rho) for rho in sol.states])
-    pops3 = np.array([qt.expect(N3, rho) for rho in sol.states])
 
-    #assert all(abs(pops1+pops2-Nph)<1e-3), "coupling calculation test failed"
+    assert all(abs(pops1+pops2-Nph)<1e-3), "coupling calculation test failed"
 
     if plot:
-        plt.plot(tlist, pops2+pops3)
+        plt.plot(tlist, pops1+pops2-Nph)
         plt.plot(tlist, pops1)
         plt.plot(tlist, pops2)
-        plt.plot(tlist, pops3)
         plt.grid()
         plt.show()
 
+def test_emission_absorption_couplings2(plot=False):
+    """Test of emission & absorption couplings calculation with 2+2 modes.
+
+    System 1 = initially populated resonator with time-dependent coupling
+        designed to release a 1/cosh(kappa*t/2) mode. Coupling is calculated
+        automatically with the tested function here.
+    System 2 = initially populated resonator with time-dependent coupling
+        designed to release a t/cosh(kappa*t/2) mode. Coupling is calculated
+        automatically with the tested function here.
+    System 3 = initially empty resonator with time-dependent coupling
+        designed to catch one of the emitted modes.
+        Coupling is calculated automatically.
+    System 4 = initially empty resonator with time-dependent coupling
+        designed to catch the other emitted mode.
+        Coupling is calculated automatically.
+
+    Passes if the total numbers of photons in the output resonators at the
+    end of the simulation equal the numbers of photons in the input resonators
+    with the matching modes at the beginning.
+    """
+
+    dims = [4, 4, 4, 4]
+    Nph1 = 1
+    Nph2 = 2
+    rho0 = qt.tensor(
+        qt.fock(dims[0], Nph1)*qt.fock(dims[0], Nph1).dag(),
+        qt.fock(dims[1], Nph2)*qt.fock(dims[1], Nph2).dag(),
+        qt.fock(dims[2], 0)*qt.fock(dims[2], 0).dag(),
+        qt.fock(dims[3], 0)*qt.fock(dims[3], 0).dag()
+        )
+    tlist = np.linspace(-30.0, 30.0, 2001)
+    Hs = [(lambda t, dim=dim: qt.qzero(dim)) for dim in dims]
+
+    kappa = 1.0
+    ph1 = np.exp(1.23j)
+    ph2 = np.exp(2.72j)
+    mode_shapes = [
+        lambda t: np.sqrt(3*kappa**3)*t*ph1 / (2*np.pi*np.cosh(kappa*t/2)),
+        lambda t: np.sqrt(kappa)*ph2 / (2*np.cosh(kappa*t/2)),
+        ]
+
+    for m_idx in range(4):
+        gs = (
+            get_emission_couplings(
+                mode_shapes if (m_idx % 2 == 0) else mode_shapes[::-1],
+                (tlist[0], tlist[-1]),
+                Npts=40001) +
+            get_absorption_couplings(
+                mode_shapes if ((m_idx//2) % 2 == 0) else mode_shapes[::-1],
+                (tlist[0], tlist[-1]),
+                Npts=40001)
+            )
+
+        sol = solve_cascaded_system(dims, Hs, gs, rho0, tlist)
+
+        N1 = qt.tensor(
+            qt.destroy(dims[0]).dag()*qt.destroy(dims[0]),
+            qt.qeye(dims[1]),
+            qt.qeye(dims[2]),
+            qt.qeye(dims[3]))
+        N2 = qt.tensor(
+            qt.qeye(dims[0]),
+            qt.destroy(dims[1]).dag()*qt.destroy(dims[1]),
+            qt.qeye(dims[2]),
+            qt.qeye(dims[3]))
+        N3 = qt.tensor(
+            qt.qeye(dims[0]),
+            qt.qeye(dims[1]),
+            qt.destroy(dims[2]).dag()*qt.destroy(dims[2]),
+            qt.qeye(dims[3]))
+        N4 = qt.tensor(
+            qt.qeye(dims[0]),
+            qt.qeye(dims[1]),
+            qt.qeye(dims[2]),
+            qt.destroy(dims[3]).dag()*qt.destroy(dims[3]))
+        pops1 = np.array([qt.expect(N1, rho) for rho in sol.states])
+        pops2 = np.array([qt.expect(N2, rho) for rho in sol.states])
+        pops3 = np.array([qt.expect(N3, rho) for rho in sol.states])
+        pops4 = np.array([qt.expect(N4, rho) for rho in sol.states])
+
+        if ((m_idx % 2) == ((m_idx//2) % 2)):
+            assert abs(pops1[0]-pops3[-1])+abs(pops2[0]-pops4[-1])<1e-3, \
+                "coupling calculation test failed"
+        else:
+            assert abs(pops1[0]-pops4[-1])+abs(pops2[0]-pops3[-1])<1e-3, \
+                "coupling calculation test failed"
+
+        if plot:
+            plt.plot(tlist, pops1)
+            plt.plot(tlist, pops2)
+            plt.plot(tlist, pops3)
+            plt.plot(tlist, pops4)
+            plt.grid()
+            plt.show()
+
 
 if __name__ == "__main__":
-    # test_cascaded_system1(plot=True)
-    # test_cascaded_system2(plot=True)
-    # test_cascaded_system3(plot=True)
+    test_cascaded_system1(plot=True)
+    test_cascaded_system2(plot=True)
+    test_cascaded_system3(plot=True)
 
     test_emission_couplings1(plot=True)
     test_emission_couplings2(plot=True)
+
+    test_emission_absorption_couplings1(plot=True)
+    test_emission_absorption_couplings2(plot=True)
