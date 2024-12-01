@@ -9,8 +9,8 @@ import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 
-def solve_cascaded_system(dims, Hs, gs, *args, **kwargs):
-    """Solve evolution of a number of cascaded systems.
+def get_cascaded_system_H_cops(dims, Hs, gs):
+    """Get Hamiltonian and collapse operators of a number of cascaded systems.
 
        |
        v   a0(t)
@@ -66,19 +66,17 @@ def solve_cascaded_system(dims, Hs, gs, *args, **kwargs):
     X(t) = g*1(t) A1(t) + g*2(t) A2(t) - ...
     Hc(t) = -i sum_{i>j} (gi(t) g*j(t) Adi Aj - H.c.) / 2
 
-
     Args:
       dims (list): Dimensions of the individual systems.
       Hs (list): Hamiltonians of the individual systems
           as functions of time.
       gs (list): In/out couplings of the individual systems
           as functions of time.
-      args (tuple): Additional arguments to be passed to qutip.mesolve.
-      kwargs (dict): Additional arguments to be passed to qutip.mesolve.
 
     Returns:
-      qutip.Result
+      tuple: (hamiltonian H, collapse operators)
     """
+
     A = [
         qt.tensor(*[
             (qt.destroy(dimi) if j==i else qt.qeye(dimj))
@@ -102,10 +100,28 @@ def solve_cascaded_system(dims, Hs, gs, *args, **kwargs):
             result += gi(t).conjugate()*A[i]
         return result
 
+    return H, [c_op]
+
+def solve_cascaded_system(dims, Hs, gs, *args, **kwargs):
+    """Solve evolution of a number of cascaded systems.
+
+    Args:
+      dims (list): Dimensions of the individual systems.
+      Hs (list): Hamiltonians of the individual systems
+          as functions of time.
+      gs (list): In/out couplings of the individual systems
+          as functions of time.
+      args (tuple): Additional arguments to be passed to qutip.mesolve.
+      kwargs (dict): Additional arguments to be passed to qutip.mesolve.
+
+    Returns:
+      qutip.Result
+    """
+    H, c_ops = get_cascaded_system_H_cops(dims, Hs, gs)
     if "c_ops" in kwargs:
-        kwargs["c_ops"].append(c_op)
+        kwargs["c_ops"] += c_ops
     else:
-        kwargs["c_ops"] = [c_op]
+        kwargs["c_ops"] = c_ops
     return qt.mesolve(H, *args, **kwargs)
 
 def get_emission_couplings(mode_shapes, t_range, Npts=1001):

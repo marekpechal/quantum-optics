@@ -3,6 +3,7 @@ import qutip as qt
 import scipy
 import matplotlib.pyplot as plt
 from quantum_optics.kiilerich import (
+    get_cascaded_system_H_cops,
     solve_cascaded_system,
     get_emission_couplings,
     get_absorption_couplings,
@@ -16,10 +17,10 @@ def solve_cat(
         dim_kpo = 6,
         dim_out_res = 6,
         kappa_therm_res = 1.0,
-        nmean_therm_res = 0.1,
+        nmean_therm_res = 0.01,
         kappa_kpo = 1.0,
         tmax = 10.0,
-        num_tpts = 4001,
+        num_tpts = 401,
         disc_pts = 4001
         ):
 
@@ -34,6 +35,38 @@ def solve_cat(
     def H_KPO(t):
         return qt.qzero(dim_kpo)
 
+    # start in the steady state of the thermal resonator + KPO,
+    # with the output resonator empty
+    rho0_th_KPO = qt_correlated_thermal_rho(
+        dim_therm_res,
+        dim_kpo,
+        nmean_therm_res,
+        nss_kpo,
+        2*nmean_therm_res*np.sqrt(kappa_therm_res*kappa_kpo)/
+            (gamma_up_therm_res-kappa_therm_res-kappa_kpo))
+    rho0 = qt.tensor(rho0_th_KPO, qt.fock_dm(dim_out_res, 0))
+
+    # first simulate just the thermal resonator + KPO to find mode decomposition
+    H, c_ops = get_cascaded_system_H_cops(
+        [
+            dim_therm_res,
+            dim_kpo],
+        [
+            lambda t: qt.qzero(dim_therm_res),
+            H_KPO],
+        [
+            lambda t: np.sqrt(kappa_therm_res),
+            lambda t: np.sqrt(kappa_kpo)])
+    corr = qt.correlation_2op_2t(H, rho0_th_KPO, tlist, tlist,
+        c_ops+[qt.tensor(
+            np.sqrt(gamma_up_therm_res)*qt.destroy(dim_therm_res).dag(),
+            qt.qeye(dim_kpo))],
+        qt.tensor(qt.qeye(dim_therm_res), qt.destroy(dim_kpo).dag()),
+        qt.tensor(qt.qeye(dim_therm_res), qt.destroy(dim_kpo)))
+    plt.imshow(abs(corr))
+    plt.show()
+    ############
+
     gs = (
         [lambda t: np.sqrt(kappa_therm_res)] +
         [lambda t: np.sqrt(kappa_kpo)] +
@@ -41,18 +74,6 @@ def solve_cat(
             [mode_shape],
             (0, tmax),
             Npts=disc_pts))
-
-    # start in the steady state of the thermal resonator + KPO,
-    # with the output resonator empty
-    rho0 = qt.tensor(
-        qt_correlated_thermal_rho(
-            dim_therm_res,
-            dim_kpo,
-            nmean_therm_res,
-            nss_kpo,
-            2*nmean_therm_res*np.sqrt(kappa_therm_res*kappa_kpo)/
-                (gamma_up_therm_res-kappa_therm_res-kappa_kpo)),
-        qt.fock_dm(dim_out_res, 0))
 
     c_ops = [qt.tensor(
         np.sqrt(gamma_up_therm_res)*qt.destroy(dim_therm_res).dag(),
