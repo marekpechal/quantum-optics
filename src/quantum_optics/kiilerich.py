@@ -96,13 +96,16 @@ def solve_cascaded_system(dims, Hs, gs, *args, **kwargs):
                 for j, dim in enumerate(dims)])
         return result
 
-    def c_ops(t, args):
+    def c_op(t, args):
         result = qt.tensor(*[qt.qzero(dim) for dim in dims])
         for i, gi in enumerate(gs):
             result += gi(t).conjugate()*A[i]
         return result
 
-    kwargs["c_ops"] = c_ops
+    if "c_ops" in kwargs:
+        kwargs["c_ops"].append(c_op)
+    else:
+        kwargs["c_ops"] = [c_op]
     return qt.mesolve(H, *args, **kwargs)
 
 def get_emission_couplings(mode_shapes, t_range, Npts=1001):

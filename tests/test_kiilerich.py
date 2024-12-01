@@ -546,6 +546,55 @@ def test_absorption_couplings1(plot=False):
         plt.imshow(abs(corr))
         plt.show()
 
+def test_thermal_noise1(plot=False):
+    """Test cascaded system with thermal noise.
+
+    System 1 = resonator with constant in/out coupling, subject to thermal bath
+    System 2 = resonator with constant in/out coupling
+    """
+    dims = [8, 12]
+    kappa1 = 1.0
+    kappa2 = 2.0
+    gamma = 0.25
+    # predicted steady-state excitation of system 1
+    N1_mean = gamma/(kappa1-gamma)
+    # predicted steady-state excitation of system 2
+    N2_ss = 2*kappa1*N1_mean/(kappa1/2+kappa2/2-gamma/2)
+    T = 10.0
+
+    Hs = [(lambda t, dim=dim: qt.qzero(dim)) for dim in dims]
+    gs = [lambda t: np.sqrt(kappa1), lambda t: np.sqrt(kappa2)]
+    c_ops = [np.sqrt(gamma)*qt.tensor(
+        qt.destroy(dims[0]).dag(),
+        qt.qeye(dims[1]))]
+    rho0 = qt.tensor(
+        qt.thermal_dm(dims[0], N1_mean),
+        qt.fock(dims[1], 0)*qt.fock(dims[1], 0).dag()
+        )
+    tlist = np.linspace(0, T, 2001)
+    sol = solve_cascaded_system(dims, Hs, gs, rho0, tlist, c_ops=c_ops)
+
+    N1 = qt.tensor(
+        qt.destroy(dims[0]).dag()*qt.destroy(dims[0]),
+        qt.qeye(dims[1]))
+    N2 = qt.tensor(
+        qt.qeye(dims[0]),
+        qt.destroy(dims[1]).dag()*qt.destroy(dims[1]))
+
+    pops1 = [qt.expect(N1, rho) for rho in sol.states]
+    pops2 = [qt.expect(N2, rho) for rho in sol.states]
+
+    assert abs(pops1[-1]-N1_mean)<1e-3, "thermal state test failed"
+    assert abs(pops2[-1]-N2_ss)<1e-3, "thermal state test failed"
+
+    if plot:
+        plt.plot(tlist, pops1)
+        plt.plot(tlist, pops2)
+        plt.plot(tlist, [N1_mean for t in tlist], "k--")
+        plt.plot(tlist, [N2_ss for t in tlist], "k--")
+        plt.grid()
+        plt.show()
+
 
 if __name__ == "__main__":
     test_cascaded_system1(plot=True)
@@ -560,3 +609,5 @@ if __name__ == "__main__":
     test_emission_absorption_couplings1(plot=True)
     test_emission_absorption_couplings2(plot=True)
     test_emission_absorption_couplings3(plot=True)
+
+    test_thermal_noise1(plot=True)
