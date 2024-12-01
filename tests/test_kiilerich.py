@@ -1,5 +1,6 @@
 import numpy as np
 import qutip as qt
+import scipy
 import matplotlib.pyplot as plt
 from quantum_optics.kiilerich import (
     solve_cascaded_system,
@@ -479,6 +480,71 @@ def test_emission_absorption_couplings3(plot=False):
             plt.grid()
             plt.show()
 
+def test_absorption_couplings1(plot=False):
+    """Test of absorption couplings calculation.
+
+    Simulate emission from a driven two-level system. Then find shapes of
+    most populated modes by SVD of the ad.a correlation function and
+    set up cascaded system to absorb the content of those modes into
+    resonators.
+
+    Passes if final mean numbers of photons in the output resonators match
+    the populations of the modes calculated from the correlation function.
+    """
+
+    dim_sys = 2
+    sigma = 0.5
+    kappa = 1.0
+    T = 5.0
+    a = qt.destroy(dim_sys)
+    H_sys = lambda t: (np.sqrt(np.pi/2)/sigma)*np.exp(-t**2/(2*sigma**2))*qt.sigmax()/2
+    rho0 = qt.fock(dim_sys, 0)*qt.fock(dim_sys, 0).dag()
+    tlist = np.linspace(-T/2, 3*T/2, 1001)
+    dt = tlist[1]-tlist[0]
+    c_ops = [np.sqrt(kappa)*a]
+
+
+    sol = qt.mesolve(H_sys, rho0, tlist,
+        c_ops=c_ops)
+
+    pops = [qt.expect(rho0, rho).real for rho in sol.states]
+
+    corr = qt.correlation.correlation_2op_2t(H_sys, rho0, tlist, tlist-tlist[0], c_ops, a.dag(), a)
+    for i in range(corr.shape[0]):
+        corr[i, i:] = corr[i, :corr.shape[1]-i]
+    for i in range(corr.shape[0]):
+        corr[i:, i] = corr[i, i:].conjugate()
+
+    U, S, V = np.linalg.svd(corr*dt)
+
+    Nmodes = 3
+    dim_res = 4
+    modes = [scipy.interpolate.interp1d(tlist, U[:, i]/np.sqrt(dt),
+            bounds_error=False, fill_value=0.0)
+        for i in range(Nmodes)]
+    gs = [lambda t: np.sqrt(kappa)] + get_absorption_couplings(modes, (tlist[0], tlist[-1]))
+    dims = [dim_sys] + [dim_res]*Nmodes
+    Hs = [H_sys] + [lambda t: qt.qzero(dim_res)]*Nmodes
+    rho0 = qt.tensor(*[qt.fock(dim, 0)*qt.fock(dim, 0).dag() for dim in dims])
+    sol = solve_cascaded_system(dims, Hs, gs, rho0, tlist)
+
+    Ns = [qt.expect(qt.tensor(*([qt.qeye(dim_sys)]+[
+        (qt.destroy(dim_res).dag()*qt.destroy(dim_res)
+            if i==j else qt.qeye(dim_res))
+        for j in range(Nmodes)])), sol.states[-1])
+            for i in range(Nmodes)]
+
+    assert all(abs(Ns/S[:Nmodes]-1)<1e-2), "coupling calculation test failed"
+
+    if plot:
+        plt.subplot(3, 1, 1)
+        plt.plot(tlist, pops)
+        plt.subplot(3, 1, 2)
+        for i in range(3):
+            plt.plot(tlist, abs(U[:, i]))
+        plt.subplot(3, 1, 3)
+        plt.imshow(abs(corr))
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -488,6 +554,8 @@ if __name__ == "__main__":
 
     test_emission_couplings1(plot=True)
     test_emission_couplings2(plot=True)
+
+    test_absorption_couplings1(plot=True)
 
     test_emission_absorption_couplings1(plot=True)
     test_emission_absorption_couplings2(plot=True)
