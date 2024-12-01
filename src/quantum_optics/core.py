@@ -1,5 +1,6 @@
 import scipy.special
 import numpy as np
+import qutip as qt
 
 def normalize(v):
     """Normalize vector."""
@@ -105,6 +106,36 @@ def thermal_rho(dim, n):
     """
     p = (n/(n+1)) ** np.arange(dim)
     return np.diag(p / sum(p))
+
+def qt_correlated_thermal_rho(dim1, dim2, n1, n2, cov):
+    """Correlated thermal state of 2 modes as a density matrix in the Fock basis.
+
+    Args:
+        dim1 (int): Dimension of the Hilbert space of mode 1.
+        dim2 (int): Dimension of the Hilbert space of mode 2.
+        n1 (float): Mean number of photons of mode 1.
+        n2 (float): Mean number of photons of mode 2.
+        cov (complex): Mean of <a1d.a2>.
+
+    Returns:
+        array: Qutip density matrix of the thermal state in the Fock basis.
+    """
+    cmat = np.array([[n1, cov], [cov, n2]])
+    evals, evecs = np.linalg.eigh(cmat)
+    n1, n2 = evals
+    Gmat = scipy.linalg.logm(evecs)
+    #theta = -np.atan2(evecs[0, 1], evecs[0, 0])
+    rho0 = qt.tensor(qt.thermal_dm(dim1, n1), qt.thermal_dm(dim2, n2))
+    a1 = qt.tensor(qt.destroy(dim1), qt.qeye(dim2))
+    a2 = qt.tensor(qt.qeye(dim1), qt.destroy(dim2))
+    U = (
+        a1.dag()*a1*Gmat[0,0]+
+        a1.dag()*a2*Gmat[0,1]+
+        a2.dag()*a1*Gmat[1,0]+
+        a2.dag()*a2*Gmat[1,1]).expm()
+    rho = U*rho0*U.dag()
+    return rho
+
 
 def psi_to_rho(psi):
     """Convert pure state vector to a density matrix.

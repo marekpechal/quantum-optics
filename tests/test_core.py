@@ -1,5 +1,6 @@
 import scipy.integrate
 import numpy as np
+import qutip as qt
 from quantum_optics.core import (
     fock_wavefunction,
     normalize,
@@ -11,6 +12,7 @@ from quantum_optics.core import (
     displaced_fock_psi,
     cat_psi,
     thermal_rho,
+    qt_correlated_thermal_rho,
     apply_loss,
     )
 
@@ -116,6 +118,27 @@ def test_thermal_rho():
     assert abs(expectation(a.conj().T @ a, rho)-n)<1e-4, \
         "expectation value check failed"
 
+def test_qt_correlated_thermal_rho():
+    dim1 = 16
+    dim2 = 16
+
+    nreps = 5
+    for _ in range(nreps):
+        n1 = np.random.random()
+        n2 = np.random.random()
+        cov = (np.sqrt(n1*n2)*
+            np.random.random()*
+            np.exp(2j*np.pi*np.random.random()))
+        rho = qt_correlated_thermal_rho(dim1, dim2, n1, n2, cov)
+
+        N1 = qt.tensor(qt.num(dim1), qt.qeye(dim2))
+        N2 = qt.tensor(qt.qeye(dim1), qt.num(dim2))
+        G = qt.tensor(qt.destroy(dim1).dag(), qt.destroy(dim2))
+        assert abs(qt.expect(N1, rho)/n1-1)<1e-2, "correlated rho_th test failed"
+        assert abs(qt.expect(N2, rho)/n2-1)<1e-2, "correlated rho_th test failed"
+        assert abs(qt.expect(G, rho)/cov-1)<1e-2, "correlated rho_th test failed"
+
+
 def test_displaced_fock_psi():
     dim = 30
     alpha = 2.0
@@ -150,5 +173,6 @@ if __name__ == "__main__":
     test_coherent_psi()
     test_cat_psi()
     test_thermal_rho()
+    test_qt_correlated_thermal_rho()
     test_displaced_fock_psi()
     test_apply_loss()
