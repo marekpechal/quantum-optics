@@ -61,7 +61,7 @@ def make_proj_2d(u1, u2):
     return u1*u1.dag()+u2*u2.dag()
 
 
-def get_eff_drive_params(H0, Wmax, npts=4001):
+def get_eff_drive_params(H0, Wmax, npts=10001):
     """Calculate effective f0g1 drive strength and ac Stark shift.
 
     Based on appendix A of Zeytinoglu 2015 (arXiv:1502.03692v1 [quant-ph]).
@@ -115,8 +115,10 @@ def get_eff_drive_params(H0, Wmax, npts=4001):
     dE0 = 0.0
     Phis = [psi_f0, psi_g1]
     basis = [psi_f0, psi_g1]
+    H_restr = [[u.dag()*H0s*v for v in basis] for u in basis]
 
-    H_restr_lst = []
+    H_restr_lst = [H_restr]
+    dets = [0.0]
     for _ in range(npts-1):
         # update drive strength
         W += dW
@@ -131,8 +133,9 @@ def get_eff_drive_params(H0, Wmax, npts=4001):
         exp0 = qt.expect(dH_ddet, basis[0])
         exp1 = qt.expect(dH_ddet, basis[1])
         ddet = (H_restr[0][0]-H_restr[1][1]).real/(exp1-exp0)
-        dE0 += H_restr[0][0]+ddet*exp0
+        dE0 += (H_restr[0][0]+ddet*exp0).real
         det += ddet
+        dets.append(det)
 
         H = H0s+det*dH_ddet+W*dH_dW-dE0*I
         Phis_new = get_closest_eigenvector(H, Phis)
@@ -143,6 +146,8 @@ def get_eff_drive_params(H0, Wmax, npts=4001):
         H_restr_lst.append(H_restr)
         Phis = Phis_new
 
+    dets = np.array(dets)
+
     H_restr_lst = np.array(H_restr_lst)
     for c, (i, j) in enumerate([(0, 0), (0, 1), (1, 0), (1, 1)]):
         plt.subplot(2, 2, c+1)
@@ -151,16 +156,12 @@ def get_eff_drive_params(H0, Wmax, npts=4001):
         plt.grid()
     plt.show()
 
-        # dets.append(det)
-        # g_tildes.append((qt.expect(H, Phis[1]) - qt.expect(H, Phis[0]))/2)
-
-    # return (
-    #     dE,
-    #     scipy.interpolate.interp1d(Wrng, g_tildes),
-    #     scipy.interpolate.interp1d(g_tildes, Wrng),
-    #     scipy.interpolate.interp1d(Wrng, dets),
-    #     scipy.interpolate.interp1d(dets, Wrng),
-    #     )
+    return (
+        dE,
+        scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 0]),
+        scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 1]),
+        scipy.interpolate.interp1d(Wrng, dets+H_restr_lst[:, 1, 1]),
+        )
 
 if __name__ == "__main__":
     dim_q = 4
@@ -168,7 +169,7 @@ if __name__ == "__main__":
     alpha = -2*np.pi*200.0e6
     g = 2*np.pi*100.0e6
     delta_rq = 2*np.pi*1000.0e6
-    kappa = 2*np.pi*25.0e6
+    kappa = 2*np.pi*1.5e6
     # delta_rq = w_r - w_q
     # w_d = 2*w_q + alpha - w_r
     # => delta_q = w_q - w_d = w_r - w_q - alpha = delta_rq - alpha
@@ -184,37 +185,77 @@ if __name__ == "__main__":
     H0_r = delta_r*a_r.dag()*a_r
     H0 = H0_q + H0_r + g*(a_q.dag()*a_r + a_r.dag()*a_q)
     psi_g1_bare = qt.tensor(qt.fock(dim_q, 0), qt.fock(dim_r, 1))
-    H0 += -0.5j*kappa*psi_g1_bare*psi_g1_bare.dag()
+    psi_g0_bare = qt.tensor(qt.fock(dim_q, 0), qt.fock(dim_r, 0))
+    H_loss = kappa*psi_g1_bare*psi_g1_bare.dag()
+    H0_diss = H0-0.5j*H_loss
+    #H0_diss = H0-0.5j*kappa*a_r.dag()*a_r
 
-    # (dE,
-    #     W_to_gtilde,
-    #     gtilde_to_W,
-    #     W_to_starkshift,
-    #     starkshift_to_W) =
-    get_eff_drive_params(H0, 2*np.pi*200.0e6)
+    (dE,
+        W_to_Heff11,
+        W_to_Heff12,
+        W_to_Heff22,
+        ) =  get_eff_drive_params(H0_diss, 2*np.pi*200.0e6)
 
-    # psi_f0 = get_closest_qr_eigenvector(H0, 2, 0)
-    # psi_g1 = get_closest_qr_eigenvector(H0, 0, 1)
-    #
-    # # correct drive frequency to account for dressing by JC coupling
-    # H0 -= dE*(a_r.dag()*a_r + a_q.dag()*a_q)
-    #
-    # T = 0.25e-6
-    # tlist = np.linspace(0, T, 1001)
-    # gt0 = np.pi/T
-    #
-    # Wlist = [gtilde_to_W(gt0*np.sin(np.pi*t/T)**2) for t in tlist]
-    # detlist = [W_to_starkshift(W) for W in Wlist]
-    # phaselist = np.cumsum(detlist)*(tlist[1]-tlist[0])
-    # Wcarr = np.array(Wlist)*np.exp(-1j*np.array(phaselist))
-    # W = scipy.interpolate.interp1d(tlist, Wcarr,
-    #     bounds_error=False, fill_value=0)
-    #
-    # logging.info("simulating evolution with stark shift compensation")
-    #
+
+    # test by comparing two-level model with full JC + dissipation
+    W0 = 2*np.pi*60.0e6
+    T = 1e-6
+    tlist = np.linspace(0, T, 1001)
+
+    def W(t):
+        return W0*np.sin(np.pi*t/T)**2
+
+    psi_f0 = get_closest_qr_eigenvector(H0_diss, 2, 0)
+    psi_g1 = get_closest_qr_eigenvector(H0_diss, 0, 1)
+    psi_g0 = get_closest_qr_eigenvector(H0_diss, 0, 0)
+    # correct drive frequency to account for dressing by JC coupling
     # def H(t, args):
-    #     return H0 + (a_q.dag()*W(t) + a_q*W(t).conjugate())/2
-    # sol = qt.sesolve(H, psi_f0, tlist)
+    #     return (H0 -
+    #         dE*(a_r.dag()*a_r + a_q.dag()*a_q) +
+    #         (a_q.dag()*W(t) + a_q*W(t).conjugate())/2)
+    def H(t, args):
+        return (H0_diss -
+            dE*(a_r.dag()*a_r + a_q.dag()*a_q) +
+            (a_q.dag()*W(t) + a_q*W(t).conjugate())/2)
+
+    #sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*a_r])
+    sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*psi_g0*psi_g1.dag()])
+    #sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*psi_g0_bare*psi_g1_bare.dag()])
+
+    #options=qt.Options(normalize_output=False)
+    #sol = qt.sesolve(H, psi_f0, tlist)
+
+    #coh = np.array([qt.expect(a_r, rho) for psi in sol.states])
+    # pops_g1 = np.array([qt.expect(rho, psi_g1) for rho in sol.states])
+    #emission = np.array([psi.dag()*H_loss*psi for psi in sol.states])
+    emission = np.array([qt.expect(H_loss, rho) for rho in sol.states])
+    # plt.subplot(2, 1, 1)
+    plt.plot(tlist, np.sqrt(emission))
+    plt.grid()
+
+    def Heff(t):
+        Heff11 = W_to_Heff11(W(t))
+        Heff12 = W_to_Heff12(W(t))
+        Heff22 = W_to_Heff22(W(t))
+        HeffM = np.array([[Heff11, Heff12], [Heff12, Heff22]])
+        return HeffM
+
+    def gen(t, psi):
+        return -1j*Heff(t) @ psi
+    sol2 = scipy.integrate.solve_ivp(gen, (0, T),
+        np.array([1., 0.], dtype=complex),
+        t_eval=tlist)
+    # plt.subplot(2, 1, 2)
+    #plt.plot(tlist, abs(sol2.y[1]))
+
+    Y = [np.sqrt(-2*(psi.conjugate() @ (Heff(t) @ psi)).imag)
+        for t, psi in zip(tlist, sol2.y.transpose())]
+
+    plt.plot(tlist, Y, "--")
+    plt.grid()
+
+    plt.show()
+
     # pops = [abs(psi_f0.overlap(psi))**2 for psi in sol.states]
     # plt.plot(tlist/1e-9, pops, label="with Stark shift compensation")
     #
