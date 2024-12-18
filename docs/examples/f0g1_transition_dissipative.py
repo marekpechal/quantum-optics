@@ -61,8 +61,8 @@ def make_proj_2d(u1, u2):
     return u1*u1.dag()+u2*u2.dag()
 
 
-def get_eff_drive_params(H0, Wmax, npts=10001):
-    """Calculate effective f0g1 drive strength and ac Stark shift.
+def get_eff_drive_params(H0, Wmax, npts=10001, ops=None):
+    """TBD
 
     Based on appendix A of Zeytinoglu 2015 (arXiv:1502.03692v1 [quant-ph]).
 
@@ -70,19 +70,11 @@ def get_eff_drive_params(H0, Wmax, npts=10001):
         H0 (Qobj): Hamiltonian of the qubit-resonator system without drive.
         Wmax (float): Upper limit of drive strength.
         npts (int, optional): Number of discretization points.
+        ops (list or None, optional): Additional operators to restrict to
+            the two-level subspace.
 
     Returns:
-        tuple:
-            float: Drive frequency shift needed to make the drive resonant
-                with the f0 <-> g1 transition.
-            callable: Interpolation function from drive strength W to effective
-                coupling g-tilde.
-            callable: Interpolation function from effective coupling g-tilde to
-                drive strength W.
-            callable: Interpolation function from drive strength W to Stark
-                shift.
-            callable: Interpolation function from Stark shift to drive
-                strength W.
+        TBD
     """
 
     logging.info("calculating effective drive strength and ac Stark shift")
@@ -115,6 +107,7 @@ def get_eff_drive_params(H0, Wmax, npts=10001):
     dE0 = 0.0
     Phis = [psi_f0, psi_g1]
     basis = [psi_f0, psi_g1]
+    bases = [basis]
     H_restr = [[u.dag()*H0s*v for v in basis] for u in basis]
 
     H_restr_lst = [H_restr]
@@ -141,12 +134,21 @@ def get_eff_drive_params(H0, Wmax, npts=10001):
         Phis_new = get_closest_eigenvector(H, Phis)
         proj = make_proj_2d(*Phis_new)
         basis = [proj*u for u in basis]
+        bases.append(basis)
         H_restr = [[u.dag()*H*v for v in basis] for u in basis]
 
         H_restr_lst.append(H_restr)
         Phis = Phis_new
 
     dets = np.array(dets)
+    bases = np.array(bases)
+
+    if ops is None:
+        ops = []
+    ops = np.array(
+        [[[[u.dag()*op*v for v in basis] for u in basis]
+            for basis in bases]
+                for op in ops])
 
     H_restr_lst = np.array(H_restr_lst)
     for c, (i, j) in enumerate([(0, 0), (0, 1), (1, 0), (1, 1)]):
@@ -156,11 +158,44 @@ def get_eff_drive_params(H0, Wmax, npts=10001):
         plt.grid()
     plt.show()
 
+    ops_f = []
+    for op in ops:
+        W_to_op11 = scipy.interpolate.interp1d(Wrng, op[:, 0, 0])
+        W_to_op12 = scipy.interpolate.interp1d(Wrng, op[:, 0, 1])
+        W_to_op21 = scipy.interpolate.interp1d(Wrng, op[:, 1, 0])
+        W_to_op22 = scipy.interpolate.interp1d(Wrng, op[:, 1, 1])
+        def W_to_op(W):
+            op11 = W_to_op11(W)
+            op12 = W_to_op12(W)
+            op21 = W_to_op21(W)
+            op22 = W_to_op22(W)
+            return np.array([
+                [op11, op12],
+                [op21, op22]
+                ])
+        ops_f.append(W_to_op)
+
+
+    W_to_Heff11 = scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 0])
+    W_to_Heff12 = scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 1])
+    W_to_Heff21 = scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 1, 0])
+    W_to_Heff22 = scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 1, 1])
+    def W_to_Heff(W):
+        Heff11 = W_to_Heff11(W)
+        Heff12 = W_to_Heff12(W)
+        Heff21 = W_to_Heff21(W)
+        Heff22 = W_to_Heff22(W)
+        return np.array([
+            [Heff11, Heff12],
+            [Heff21, Heff22]
+            ])
+
     return (
         dE,
-        scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 0]),
-        scipy.interpolate.interp1d(Wrng, H_restr_lst[:, 0, 1]),
-        scipy.interpolate.interp1d(Wrng, dets+H_restr_lst[:, 1, 1]),
+        scipy.interpolate.interp1d(Wrng, dets),
+        (Wrng, bases),
+        W_to_Heff,
+        ops_f,
         )
 
 if __name__ == "__main__":
@@ -186,89 +221,59 @@ if __name__ == "__main__":
     H0 = H0_q + H0_r + g*(a_q.dag()*a_r + a_r.dag()*a_q)
     psi_g1_bare = qt.tensor(qt.fock(dim_q, 0), qt.fock(dim_r, 1))
     psi_g0_bare = qt.tensor(qt.fock(dim_q, 0), qt.fock(dim_r, 0))
-    H_loss = kappa*psi_g1_bare*psi_g1_bare.dag()
+    H_loss = kappa*a_r.dag()*a_r
+
     H0_diss = H0-0.5j*H_loss
-    #H0_diss = H0-0.5j*kappa*a_r.dag()*a_r
+
+    psi_f0 = get_closest_qr_eigenvector(H0_diss, 2, 0)
+    psi_g1 = get_closest_qr_eigenvector(H0_diss, 0, 1)
+    psi_g0 = get_closest_qr_eigenvector(H0_diss, 0, 0)
+
+    proj_g1 = psi_g1*psi_g1.dag()
+
 
     (dE,
-        W_to_Heff11,
-        W_to_Heff12,
-        W_to_Heff22,
-        ) =  get_eff_drive_params(H0_diss, 2*np.pi*200.0e6)
+        W_to_det,
+        (Wrng, bases),
+        W_to_Heff,
+        (W_to_proj_g1, ),
+        ) =  get_eff_drive_params(H0_diss, 2*np.pi*400.0e6, ops=[proj_g1])
 
 
     # test by comparing two-level model with full JC + dissipation
-    W0 = 2*np.pi*60.0e6
+    W0 = 2*np.pi*100.0e6
     T = 1e-6
     tlist = np.linspace(0, T, 1001)
 
     def W(t):
         return W0*np.sin(np.pi*t/T)**2
 
-    psi_f0 = get_closest_qr_eigenvector(H0_diss, 2, 0)
-    psi_g1 = get_closest_qr_eigenvector(H0_diss, 0, 1)
-    psi_g0 = get_closest_qr_eigenvector(H0_diss, 0, 0)
     # correct drive frequency to account for dressing by JC coupling
-    # def H(t, args):
-    #     return (H0 -
-    #         dE*(a_r.dag()*a_r + a_q.dag()*a_q) +
-    #         (a_q.dag()*W(t) + a_q*W(t).conjugate())/2)
     def H(t, args):
         return (H0_diss -
-            dE*(a_r.dag()*a_r + a_q.dag()*a_q) +
+            (dE+W_to_det(W(t)))*(a_r.dag()*a_r + a_q.dag()*a_q) +
             (a_q.dag()*W(t) + a_q*W(t).conjugate())/2)
 
-    #sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*a_r])
-    sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*psi_g0*psi_g1.dag()])
-    #sol = qt.mesolve(H, psi_f0, tlist, c_ops=[np.sqrt(kappa)*psi_g0_bare*psi_g1_bare.dag()])
+    sol = qt.sesolve(H, psi_f0, tlist, options={"normalize_output":False}) #options=options)
 
-    #options=qt.Options(normalize_output=False)
-    #sol = qt.sesolve(H, psi_f0, tlist)
+    emission = np.array([qt.expect(proj_g1, state)
+        for state in sol.states])
 
-    #coh = np.array([qt.expect(a_r, rho) for psi in sol.states])
-    # pops_g1 = np.array([qt.expect(rho, psi_g1) for rho in sol.states])
-    #emission = np.array([psi.dag()*H_loss*psi for psi in sol.states])
-    emission = np.array([qt.expect(H_loss, rho) for rho in sol.states])
-    # plt.subplot(2, 1, 1)
-    plt.plot(tlist, np.sqrt(emission))
-    plt.grid()
+    plt.plot(tlist, emission)
 
     def Heff(t):
-        Heff11 = W_to_Heff11(W(t))
-        Heff12 = W_to_Heff12(W(t))
-        Heff22 = W_to_Heff22(W(t))
-        HeffM = np.array([[Heff11, Heff12], [Heff12, Heff22]])
-        return HeffM
+        return W_to_Heff(W(t))
 
     def gen(t, psi):
         return -1j*Heff(t) @ psi
     sol2 = scipy.integrate.solve_ivp(gen, (0, T),
         np.array([1., 0.], dtype=complex),
         t_eval=tlist)
-    # plt.subplot(2, 1, 2)
-    #plt.plot(tlist, abs(sol2.y[1]))
 
-    Y = [np.sqrt(-2*(psi.conjugate() @ (Heff(t) @ psi)).imag)
+    Y = [(psi.conjugate() @ (W_to_proj_g1(W(t)) @ psi)).real
         for t, psi in zip(tlist, sol2.y.transpose())]
 
     plt.plot(tlist, Y, "--")
+
     plt.grid()
-
     plt.show()
-
-    # pops = [abs(psi_f0.overlap(psi))**2 for psi in sol.states]
-    # plt.plot(tlist/1e-9, pops, label="with Stark shift compensation")
-    #
-    # logging.info("simulating evolution without stark shift compensation")
-    #
-    # def H(t, args):
-    #     return H0 + abs(W(t))*(a_q.dag() + a_q)/2
-    # sol = qt.sesolve(H, psi_f0, tlist)
-    # pops = [abs(psi_f0.overlap(psi))**2 for psi in sol.states]
-    # plt.plot(tlist/1e-9, pops, label="without Stark shift compensation")
-    #
-    # plt.xlabel("Time [ns]")
-    # plt.ylabel("$|f0\\rangle$ population")
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
